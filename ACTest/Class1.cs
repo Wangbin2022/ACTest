@@ -7,11 +7,7 @@ using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
+
 //声明命令存储位置，加快执行查找速度
 [assembly: CommandClass(typeof(Class1))]
 
@@ -301,15 +297,300 @@ namespace ACTest
             }
             else { RotateEntity(ent.Id, center, degree); }
         }
+        public Entity MirrorEntity(ObjectId entId, Point3d p1, Point3d p2, bool isDeleteSource)
+        {
+            Entity entR;
+            //计算镜像变换矩阵
+            Matrix3d mt = Matrix3d.Mirroring(new Line3d(p1, p2));
+            //Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = entId.Database.TransactionManager.StartTransaction())
+            {
+                Entity ent = trans.GetObject(entId, OpenMode.ForWrite) as Entity;
+                entR = ent.GetTransformedCopy(mt);
+                //是否移动还是复制？
+                if (isDeleteSource)
+                {
+                    ent.Erase();
+                    //不能直接赋值给新的
+                    //entR = ent;
+                }
+                trans.Commit();
+            }
+            return entR;
+        }
+        public Entity MirrorEntity(Entity ent, Point3d p1, Point3d p2, bool isDeleteSource)
+        {
+            Entity entR;
+            if (ent.IsNewObject)
+            {
+                //计算镜像变换矩阵
+                Matrix3d mt = Matrix3d.Mirroring(new Line3d(p1, p2));
+                entR = ent.GetTransformedCopy(mt);
+            }
+            else
+            {
+                entR = MirrorEntity(ent.ObjectId, p1, p2, isDeleteSource);
+            }
+            return entR;
+        }
+        public void ScaleEntity(ObjectId entId, Point3d basePoint, double factor)
+        {
+            Matrix3d mt = Matrix3d.Scaling(factor, basePoint);
+            using (Transaction trans = entId.Database.TransactionManager.StartTransaction())
+            {
+                Entity ent = entId.GetObject(OpenMode.ForWrite) as Entity;
+                ent.TransformBy(mt);
+                trans.Commit();
+            }
+        }
+        public void ScaleEntity(Entity ent, Point3d basePoint, double factor)
+        {
+            if (ent.IsNewObject)
+            {
+                Matrix3d mt = Matrix3d.Scaling(factor, basePoint);
+                ent.TransformBy(mt);
+            }
+            else { ScaleEntity(ent.ObjectId, basePoint, factor); }
+        }
+        public void DeleteEntiy(ObjectId entId)
+        {
+            using (Transaction trans = entId.Database.TransactionManager.StartTransaction())
+            {
+                Entity ent = entId.GetObject(OpenMode.ForWrite) as Entity;
+                ent.Erase();
+                trans.Commit();
+            }
+        }
+        public void DeleteEntiy(Entity ent)
+        {
+            DeleteEntiy(ent.ObjectId);
+        }
+        public PromptPointResult GetPoint(PromptPointOptions ppo)
+        {
+            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            ppo.AllowNone = true;
+            return ed.GetPoint(ppo);
+
+        }
+        public PromptPointResult GetPoint(Editor editor, string promptStr)
+        {
+            PromptPointOptions ppo = new PromptPointOptions(promptStr);
+            //允许回车和空格废弃
+            ppo.AllowNone = true;
+            return GetPoint(ppo);
+        }
+        public PromptPointResult GetPoint(Editor editor, string promptStr, Point3d pointBase, params string[] keyWord)
+        {
+            PromptPointOptions ppo = new PromptPointOptions(promptStr);
+            //允许回车和空格废弃
+            ppo.AllowNone = true;
+            for (int i = 0; i < keyWord.Length; i++)
+            {
+                ppo.Keywords.Add(keyWord[i]);
+            }
+            //取消默认的显示选项
+            ppo.AppendKeywordsToMessage = false;
+            ppo.BasePoint = pointBase;
+            ppo.UseBasePoint = true;
+            return GetPoint(ppo);
+        }
+        private Point3d GetLineStartPoint(ObjectId lineId)
+        {
+            Point3d startPoint = new Point3d();
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                Line line = lineId.GetObject(OpenMode.ForRead) as Line;
+                startPoint = line.StartPoint;
+                trans.Commit();
+            }
+            return startPoint;
+        }
+        public class CircleJig : EntityJig
+        {
+            private double jRadius;
+            public CircleJig(Point3d center) : base(new Circle())
+            {
+                (Entity as Circle).Center = center;
+            }
+            //图形更新，自带事务处理无需声明
+            protected override bool Update()
+            {
+                if (jRadius > 0)
+                {
+                    (Entity as Circle).Radius = jRadius;
+                }
+                return true;
+            }
+            //移动鼠标时改变属性 ed.Drag联动
+            protected override SamplerStatus Sampler(JigPrompts prompts)
+            {
+                throw new NotImplementedException();
+
+            }
+
+        }
         //测试通用方法
         [CommandMethod("Cmd1")]
         public void Cmd1()
         {
             Database db = Application.DocumentManager.MdiActiveDocument.Database;
 
+            //0308 拖拽类EntityJig
+            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            Point3d center = new Point3d();
+            //double radius = 0;
+            PromptPointResult ppr = GetPoint(ed, "\n 请指定圆心：");
+            if (ppr.Status == PromptStatus.OK)
+            {
+                center = ppr.Value;
+            }
+            CircleJig jCircle = new CircleJig(center);
+            PromptResult pr = ed.Drag(jCircle);
 
-
-            ////0303 向量计算复制
+            ////取半径，需要ENtityJig替代
+            //PromptDistanceOptions pdo = new PromptDistanceOptions("\n 请指定圆上的一个点：");
+            //pdo.BasePoint = center;
+            //pdo.UseBasePoint = true;
+            ////下面这句顺序很重要，否则取半径需两个点？
+            //PromptDoubleResult pdr = ed.GetDistance(pdo);
+            //if (pdr.Status == PromptStatus.OK)
+            //{
+            //    radius = pdr.Value;
+            //}
+            //AddCircleToModelSpace(center, radius);
+            //以上Jig替代
+            ////0307 仿系统直线,连续绘制，退回和封闭OK
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            ////声明直线集合对象，保存过程生成便于回溯
+            //List<ObjectId> lineList = new List<ObjectId>();
+            ////声明默认起点
+            //Point3d pointStart = new Point3d(0, 0, 0);
+            //Point3d pointPre = new Point3d(0, 0, 0);
+            //PromptPointResult ppr = GetPoint2(ed, "\n input 1st point");
+            //if (ppr.Status == PromptStatus.Cancel) return;
+            //if (ppr.Status == PromptStatus.None) pointPre = pointStart;
+            //if (ppr.Status == PromptStatus.OK)
+            //{
+            //    pointStart = ppr.Value;
+            //    pointPre = pointStart;
+            //}
+            ////循环退出条件
+            //bool isContinue = true;
+            //while (isContinue)
+            //{
+            //    if (lineList.Count >= 2)
+            //    {
+            //        ppr = GetPoint(ed, "\n 指定下一点或[闭合(C)/放弃（U）]", pointPre, new string[] { "C", "U" });
+            //    }
+            //    else
+            //    {
+            //        ppr = GetPoint(ed, "\n 指定下一点或[放弃（U）]", pointPre, new string[] { "U" });
+            //    }
+            //    Point3d pointNext;
+            //    if (ppr.Status == PromptStatus.Cancel) return;
+            //    if (ppr.Status == PromptStatus.None) return;
+            //    if (ppr.Status == PromptStatus.OK)
+            //    {
+            //        pointNext = ppr.Value;
+            //        lineList.Add(AddLineToModelSpace(db, pointPre, pointNext));
+            //        pointPre = pointNext;
+            //    }
+            //    if (ppr.Status == PromptStatus.Keyword)
+            //    {
+            //        switch (ppr.StringResult)
+            //        {
+            //            case "U":
+            //                //如果为空要重置条件
+            //                if (lineList.Count < 0)
+            //                {
+            //                    pointStart = new Point3d(0, 0, 0);
+            //                    pointPre = new Point3d(0, 0, 0);
+            //                    ppr = GetPoint2(ed, "\n input 1st point");
+            //                    if (ppr.Status == PromptStatus.Cancel) return;
+            //                    if (ppr.Status == PromptStatus.None) pointPre = pointStart;
+            //                    if (ppr.Status == PromptStatus.OK)
+            //                    {
+            //                        pointStart = ppr.Value;
+            //                        pointPre = pointStart;
+            //                    }
+            //                }
+            //                else if (lineList.Count > 0)
+            //                {
+            //                    int count = lineList.Count;
+            //                    ObjectId id = lineList.ElementAt(count - 1);
+            //                    pointPre = GetLineStartPoint(id);
+            //                    lineList.RemoveAt(count - 1);
+            //                    DeleteEntiy(id);
+            //                }
+            //                break;
+            //            case "C":
+            //                lineList.Add(AddLineToModelSpace(db, pointPre, pointStart));
+            //                isContinue = false;
+            //                break;
+            //            //default:
+            //            //    break;
+            //        }
+            //    }
+            //}
+            ////例程结束
+            ////0307 非模态直接开启机制不允许绘图命令，开模态就没问题
+            //Window1 window1 = new Window1(db);
+            //window1.ShowDialog();
+            ////可能因为线程，测试没通过
+            ////0306 用户交互
+            ////Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //PromptPointOptions ppo = new PromptPointOptions("input point");
+            //ppo.AllowNone = true;
+            //PromptPointResult ppr = GetPoint(ppo);
+            //Point3d p1 = new Point3d(0, 0, 0);
+            //Point3d p2 = new Point3d();
+            //if (ppr.Status == PromptStatus.Cancel) return;
+            //if (ppr.Status == PromptStatus.OK) p1=ppr.Value;
+            //ppo.Message = "2nd Point input.";
+            //ppo.BasePoint = p1;
+            //ppo.UseBasePoint= true;
+            //ppr = GetPoint(ppo);
+            //if (ppr.Status == PromptStatus.Cancel) return;
+            //if (ppr.Status == PromptStatus.None) return;
+            //if (ppr.Status == PromptStatus.OK) p2 = ppr.Value;
+            //AddLineToModelSpace(db, p1, p2);
+            ////例程结束
+            //PromptPointOptions ppo = new PromptPointOptions("input point");
+            //
+            ////basePoint自动捕捉一条虚线
+            //ppo.BasePoint = new Point3d(100, 100, 0);
+            //ppo.UseBasePoint = true;
+            //PromptPointResult ppr = ed.GetPoint(ppo);
+            //打开文件OK
+            //ed.GetFileNameForOpen(new PromptOpenFileOptions("input something"));
+            //ed.GetFileNameForOpen("input something");
+            //PromptStatus.枚举有7种
+            ////简易直线
+            //PromptPointResult ppr = ed.GetPoint("input point");
+            //if (ppr.Status == PromptStatus.OK)
+            //{
+            //    Point3d point1 = ppr.Value;
+            //    ppr = ed.GetPoint("请选择第二个点");
+            //    if (ppr.Status == PromptStatus.OK)
+            //    {
+            //        Point3d point2 = ppr.Value;
+            //        AddLineToModelSpace(db, point1, point2);
+            //    }
+            //}
+            //倒角和延申CAD二开不支持？？打断，偏移方法也没有讲，应该原理近似
+            ////0304 缩放测试
+            //Circle c1 = new Circle(new Point3d(100, 100, 0), Vector3d.ZAxis, 100);
+            //AddEntityToModelSpace(db, c1);
+            //ScaleEntity(c1.ObjectId, new Point3d(100, 0, 0), 2);
+            ////例程结束
+            ////0304 镜像测试
+            //Circle c1 = new Circle(new Point3d(100, 100, 0), Vector3d.ZAxis, 100);
+            //ObjectId objectId = AddEntityToModelSpace(db, c1);
+            //Entity ent = MirrorEntity(objectId, new Point3d(100, 0, 0), new Point3d(200, 0, 0),true);
+            //AddEntityToModelSpace(db, ent);
+            ////例程结束
+            ////0303 向量计算复制.注意生成新对象的句子可以写到方法体中避免内部重复
             //Circle c1 = new Circle(new Point3d(100, 100, 0), new Vector3d(0, 0, 1), 100);
             //Point3d p1 = new Point3d(100, 100, 0);
             //Point3d p2 = new Point3d(200, 300, 0);
