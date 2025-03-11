@@ -7,6 +7,8 @@ using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+
 
 //声明命令存储位置，加快执行查找速度
 [assembly: CommandClass(typeof(Class1))]
@@ -123,7 +125,7 @@ namespace ACTest
             Arc arc = new Arc(centerPoint, radius, startAngle, startAngle + DegreeToAngle(degree));
             return AddEntityToModelSpace(db, arc);
         }
-        public double GetDistanceBetween2Points(Point3d p1, Point3d p2)
+        public static double GetDistanceBetween2Points(Point3d p1, Point3d p2)
         {
             return Math.Abs(Math.Sqrt((p1.X - p2.X) * (p1.X - p2.X) + (p1.Y - p2.Y) * (p1.Y - p2.Y) + (p1.Z - p2.Z) * (p1.Z - p2.Z)));
         }
@@ -425,29 +427,258 @@ namespace ACTest
             //移动鼠标时改变属性 ed.Drag联动
             protected override SamplerStatus Sampler(JigPrompts prompts)
             {
-                throw new NotImplementedException();
-
+                JigPromptPointOptions jppo = new JigPromptPointOptions("\n 请指定圆上的一个点：[放弃（U）]");
+                //空格键控制
+                char space = (char)32;
+                jppo.Keywords.Add("U");
+                jppo.Keywords.Add(space.ToString());
+                jppo.UserInputControls = UserInputControls.Accept3dCoordinates;
+                jppo.Cursor = CursorType.RubberBand;
+                jppo.BasePoint = (Entity as Circle).Center;
+                jppo.UseBasePoint = true;
+                PromptPointResult ppr = prompts.AcquirePoint(jppo);
+                jRadius = GetDistanceBetween2Points(ppr.Value, (Entity as Circle).Center);
+                return SamplerStatus.NoChange;
             }
-
+            public Entity GetEntity()
+            {
+                return Entity;
+            }
+        }
+        private void ChangeColor(SelectionSet sSet)
+        {
+            ObjectId[] ids = sSet.GetObjectIds();
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                //不是新建不必设置块表
+                for (int i = 0; i < sSet.Count; i++)
+                {
+                    Entity entity = ids[i].GetObject(OpenMode.ForWrite) as Entity;
+                    entity.ColorIndex = 1;
+                }
+                trans.Commit();
+            }
+        }
+        private void ChangeColor(List<ObjectId> ids)
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                //不是新建不必设置块表
+                for (int i = 0; i < ids.Count; i++)
+                {
+                    Entity entity = ids[i].GetObject(OpenMode.ForWrite) as Entity;
+                    entity.ColorIndex = 1;
+                }
+                trans.Commit();
+            }
+        }
+        private List<Point3d> getSelectPoint(SelectionSet sSet)
+        {
+            List<Point3d> points = new List<Point3d>();
+            ObjectId[] ids = sSet.GetObjectIds();
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                //不是新建不必设置块表
+                for (int i = 0; i < sSet.Count; i++)
+                {
+                    Entity entity = ids[i].GetObject(OpenMode.ForRead) as Entity;
+                    Point3d center = (entity as Circle).Center;
+                    double radius = (entity as Circle).Radius;
+                    points.Add(new Point3d(center.X + radius, center.Y + radius, center.Z));
+                }
+                trans.Commit();
+            }
+            return points;
+        }
+        private List<Entity> GetEntity(ObjectId[] ids)
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            List<Entity> entList = new List<Entity>();
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                foreach (ObjectId item in ids)
+                {
+                    Entity entity = item.GetObject(OpenMode.ForRead) as Entity;
+                    entList.Add(entity);
+                }
+                trans.Commit();
+            }
+            return entList;
+        }
+        private void LowColorEntity(List<Entity> entList, byte colorNum)
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                foreach (Entity item in entList)
+                {
+                    Entity entity = item.ObjectId.GetObject(OpenMode.ForWrite) as Entity;
+                    entity.ColorIndex = colorNum;
+                }
+                trans.Commit();
+            }
+        }
+        public class MoveJig : DrawJig
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            private List<Entity> jEntList = new List<Entity>();
+            private Point3d jPointBase;
+            private Point3d jPointPre;
+            //默认矩阵向量平移无变化
+            Matrix3d jMt = Matrix3d.Displacement(new Vector3d(0, 0, 0));
+            public MoveJig(List<Entity> entList, Point3d pointBase)
+            {
+                jEntList = entList;
+                jPointBase = pointBase;
+                jPointPre = pointBase;
+            }
+            protected override bool WorldDraw(Autodesk.AutoCAD.GraphicsInterface.WorldDraw draw)
+            {
+                foreach (var item in jEntList)
+                {
+                    draw.Geometry.Draw(item);
+                }
+                return true;
+            }
+            protected override SamplerStatus Sampler(JigPrompts prompts)
+            {
+                //声明提示类
+                JigPromptPointOptions jppo = new JigPromptPointOptions("\n 指定第二点或<使用第一点作为位移>:");
+                jppo.Cursor = CursorType.RubberBand;
+                jppo.BasePoint = jPointBase;
+                jppo.UseBasePoint = true;
+                jppo.UserInputControls = UserInputControls.Accept3dCoordinates;
+                //取动态坐标值
+                PromptPointResult ppr = prompts.AcquirePoint(jppo);
+                Point3d curPoint = ppr.Value;
+                //矩阵变化
+                if (curPoint != ppr.Value)
+                {
+                    Vector3d vector = jPointPre.GetVectorTo(curPoint);
+                    jMt = Matrix3d.Displacement(vector);
+                    //using (Transaction trans = db.TransactionManager.StartTransaction())
+                    //{
+                    //    foreach (var item in jEntList)
+                    //    {
+                    //        Entity entity = item.ObjectId.GetObject(OpenMode.ForWrite) as Entity;
+                    //        item.TransformBy(jMt);
+                    //    }
+                    //    trans.Commit();
+                    //}
+                }
+                jPointPre = curPoint;
+                return SamplerStatus.NoChange;
+            }
         }
         //测试通用方法
-        [CommandMethod("Cmd1")]
+        [CommandMethod("Cmd1", CommandFlags.UsePickSet)]
         public void Cmd1()
         {
             Database db = Application.DocumentManager.MdiActiveDocument.Database;
 
-            //0308 拖拽类EntityJig
-            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-            Point3d center = new Point3d();
-            //double radius = 0;
-            PromptPointResult ppr = GetPoint(ed, "\n 请指定圆心：");
-            if (ppr.Status == PromptStatus.OK)
-            {
-                center = ppr.Value;
-            }
-            CircleJig jCircle = new CircleJig(center);
-            PromptResult pr = ed.Drag(jCircle);
 
+            //0309 DrawJig仿写移动命令 参考位移 必要性不大 没细看
+            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            PromptSelectionResult psr = ed.SelectImplied();
+            if (psr.Status != PromptStatus.OK)
+            {
+                psr = ed.GetSelection();
+            }
+            Point3d pointBase = new Point3d(0, 0, 0);
+            PromptPointOptions ppo = new PromptPointOptions("\n 指定基点或[位移(D)]<位移>：");
+            ppo.AllowNone = true;
+            ppo.BasePoint = pointBase;
+            ppo.UseBasePoint = true;
+            PromptPointResult ppr = ed.GetPoint(ppo);
+            if (ppr.Status == PromptStatus.Cancel) return;
+            if (ppr.Status == PromptStatus.OK) pointBase = ppr.Value;
+            List<Entity> entList = new List<Entity>();
+            ObjectId[] ids = psr.Value.GetObjectIds();
+            entList = GetEntity(ids);
+            //改原位图形底色
+            LowColorEntity(entList, 211);
+            //交互类要先声明
+            MoveJig moveJig = new MoveJig(entList, pointBase);
+            PromptResult pr = ed.Drag(moveJig);
+
+
+            ////0309 先选择后处理的办法 选择集处理
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            ////先操作再选择的写法SelectImplied
+            ////需要顶部属性加入 CommandFlags.UsePickSet
+            //PromptSelectionResult psr = ed.SelectImplied();
+            //ed.WriteMessage("OK");
+            ////例程结束
+            //按点选择,程序有问题不细究了
+            //TypedValue[] values = new TypedValue[] { new TypedValue((int)DxfCode.Start, "circle") };
+            //SelectionFilter filter = new SelectionFilter(values);
+            //PromptSelectionResult psr = ed.GetSelection(filter);
+            //List<ObjectId> ids = new List<ObjectId>();
+            //if (psr.Status == PromptStatus.OK)
+            //{
+            //    SelectionSet sSet = psr.Value;
+            //    List<Point3d> points = getSelectPoint(sSet);
+            //    for (int i = 0; i < points.Count; i++)
+            //    {
+            //        PromptSelectionResult ss1 = ed.SelectCrossingWindow(points.ElementAt(i), points.ElementAt(i));
+            //        ids.AddRange(ss1.Value.GetObjectIds());
+            //    }
+            //}
+            //ChangeColor(ids);
+            ////psr = ed.SelectCrossingWindow(pt1, pt2);
+            ////过滤器处理
+            //TypedValue[] values = new TypedValue[] { new TypedValue((int)DxfCode.Start, "circle") };
+            ////DxfCode是内置元素的代码对照表，8是图层名称
+            ////可用(setq ent (entsel)) (setq ent_id(car ent))(setq ent_data(entget ent_id))
+            ////等同以上(entget(car(entsel)))取对象内部属性dicttionary值，等同revit lookup
+            //SelectionFilter filter = new SelectionFilter(values);
+            //PromptSelectionResult psr = ed.GetSelection(filter);
+            //if (psr.Status == PromptStatus.OK)
+            //{
+            //    SelectionSet selectionSet = psr.Value;
+            //    ChangeColor(selectionSet);
+            //}
+            ////例程结束
+            ////选择所有图形
+            ////PromptSelectionResult psr = ed.SelectAll();
+            ////ed.SelectLast();//选择最后绘制的实体
+            ////ed.SelectImplied();//选择已选的实体
+            ////ed.SelectPrevious();//选择上次选中的实体
+            ////ed.SelectWindow();//选择2点窗口中的实体
+            ////ed.SelectCrossingWindow();//选择2点窗口碰到的实体
+            //PromptSelectionResult psr = ed.GetSelection();
+            //if (psr.Status == PromptStatus.OK)
+            //{
+            //    SelectionSet selectionSet = psr.Value;
+            //    ChangeColor(selectionSet);
+            //}
+            ////例程结束
+            ////0308 拖拽类EntityJig
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //Point3d center = new Point3d();
+            ////double radius = 0;
+            //PromptPointResult ppr = GetPoint(ed, "\n 请指定圆心：");
+            //if (ppr.Status == PromptStatus.OK)
+            //{
+            //    center = ppr.Value;
+            //}
+            //CircleJig jCircle = new CircleJig(center);
+            ////PromptPointResult pr = ed.Drag(jCircle) as PromptPointResult;
+            ////if (pr.Status == PromptStatus.OK)
+            ////{
+            ////    Point3d pt = pr.Value;
+            ////    AddCircleToModelSpace(center, GetDistanceBetween2Points(center, pt));
+            ////}
+            ////下面写法等同以上效果
+            //PromptResult pr = ed.Drag(jCircle);
+            //if (pr.Status == PromptStatus.OK)
+            //{
+            //    AddEntityToModelSpace(db, jCircle.GetEntity());
+            //}
+            ////例程结束
             ////取半径，需要ENtityJig替代
             //PromptDistanceOptions pdo = new PromptDistanceOptions("\n 请指定圆上的一个点：");
             //pdo.BasePoint = center;
