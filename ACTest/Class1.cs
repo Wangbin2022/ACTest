@@ -8,6 +8,8 @@ using Autodesk.AutoCAD.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Windows;
 
 
 //声明命令存储位置，加快执行查找速度
@@ -369,7 +371,7 @@ namespace ACTest
         }
         public PromptPointResult GetPoint(PromptPointOptions ppo)
         {
-            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            Editor ed = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Editor;
             ppo.AllowNone = true;
             return ed.GetPoint(ppo);
 
@@ -550,15 +552,21 @@ namespace ACTest
                 jppo.Cursor = CursorType.RubberBand;
                 jppo.BasePoint = jPointBase;
                 jppo.UseBasePoint = true;
+                jppo.Keywords.Add(" ");
+                jppo.AppendKeywordsToMessage = false;
                 jppo.UserInputControls = UserInputControls.Accept3dCoordinates;
                 //取动态坐标值
                 PromptPointResult ppr = prompts.AcquirePoint(jppo);
                 Point3d curPoint = ppr.Value;
                 //矩阵变化
-                if (curPoint != ppr.Value)
+                if (curPoint != jPointPre)
                 {
                     Vector3d vector = jPointPre.GetVectorTo(curPoint);
                     jMt = Matrix3d.Displacement(vector);
+                    foreach (var item in jEntList)
+                    {
+                        item.TransformBy(jMt);
+                    }
                     //using (Transaction trans = db.TransactionManager.StartTransaction())
                     //{
                     //    foreach (var item in jEntList)
@@ -570,41 +578,810 @@ namespace ACTest
                     //}
                 }
                 jPointPre = curPoint;
+                //if (ppr.Status == PromptStatus.Cancel)
+                //{
+                //    return SamplerStatus.Cancel;
+                //}
+                //else 
                 return SamplerStatus.NoChange;
             }
+            public List<Entity> GetEntity()
+            {
+                return jEntList;
+            }
+        }
+        private List<Entity> CopyEntity(List<Entity> entList, Matrix3d mt)
+        {
+            List<Entity> entListCopy = new List<Entity>();
+            foreach (var item in entList)
+            {
+                entListCopy.Add(item.GetTransformedCopy(mt));
+            }
+            return entListCopy;
+        }
+        private void DeleteEntitys(Entity[] ents)
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                foreach (Entity item in ents)
+                {
+                    Entity entity = item.ObjectId.GetObject(OpenMode.ForWrite) as Entity;
+                    entity.Erase();
+                }
+                trans.Commit();
+            }
+        }
+        public struct TextSpecialSymbol
+        {
+            public static readonly string Degree = @"\U+00B0";      //角度(°)
+            public static readonly string Tolerance = @"\U+00B1";   //公差（±）
+            public static readonly string Diameter = @"\U+00D8";    //直径（Ø）
+            public static readonly string Angle = @"\U+2220";       //角度（∠）
+            public static readonly string AlmostEqual = @"\U+2248"; //约等于（≈）
+            public static readonly string LineBoundary = @"\U+E100";    // 边界线
+            public static readonly string LineCenter = @"\U+2104";  // 中心线
+            public static readonly string Delta = @"\U+0394";       // 增量(Δ)
+            public static readonly string ElectricalPhase = @"\U+0278"; // 电相位(φ)
+            public static readonly string LineFlow = @"\U+E101";    // 流线
+            public static readonly string Identity = @"\U+2261";    // 标识
+            public static readonly string InitialLength = @"\U+E200";   // 初始长度
+            public static readonly string LineMonument = @"\U+E102";    // 界碑线
+            public static readonly string Notequal = @"\U+2260";    // 不相等(≠)
+            public static readonly string Ohm = @"\U+2126";     // 欧姆
+            public static readonly string Omega = @"\U+03A9";   // 欧米加(Ω)
+            public static readonly string LinePlate = @"\U+214A";   // 地界线
+            public static readonly string Subscript2 = @"\U+2082";  // 下标2
+            public static readonly string Square = @"\U+00B2";      // 平方
+            public static readonly string Cube = @"\U+00B3";        // 立方
+            public static readonly string Overline = @"%%o";    // 单行文字上划线
+            public static readonly string Underline = @"%%u";   // 单行文字下划线
+            public static readonly string Alpha = @"\U+03B1";   // 希腊字母(α)
+            public static readonly string Belta = @"\U+03B2";   //希腊字母（β）
+            public static readonly string Gamma = @"\U+03B3";   //希腊字母（γ ）
+            public static readonly string Theta = @"\U+03B8";   //希腊字母（θ ）
+            public static readonly string SteelBar1 = @"\U+0082";   // 一级钢筋符号
+            public static readonly string SteelBar2 = @"\U+0083";   // 二级钢筋符号
+            public static readonly string SteelBar3 = @"\U+0084";   // 三级钢筋符号
+            public static readonly string SteelBar4 = @"\U+0085";   // 四级钢筋符号
+        }
+        public struct MTextStackType
+        {
+            public static readonly string Horizental = "/"; //水平堆叠
+            public static readonly string Italic = "#";  //斜分堆叠
+            public static readonly string Tolerance = "^"; //容差堆叠
+        }
+        public void PickMText() //多行文字转字符串没成功
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            Editor ed = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Editor;
+            PromptEntityResult per = ed.GetEntity("\n 请选择多行文字：");
+            if (per.Status == PromptStatus.OK) return;
+            Entity ent;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                ent = per.ObjectId.GetObject(OpenMode.ForRead) as Entity;
+                MText mt = (MText)ent;
+                string text = mt.Contents;
+                MessageBox.Show(text);
+            }
+
+            //ed.WriteMessage(text);
+        }
+        private Entity GetEntity(Database db, ObjectId entId)
+        {
+            Entity ent;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                ent = entId.GetObject(OpenMode.ForRead) as Entity;
+            }
+            return ent;
+        }
+        private List<Point3d> GetBaseLineDivPoints(Line line, double divDist)
+        {
+            List<Point3d> points = new List<Point3d>();
+            int divNum = (int)(line.Length / divDist);
+            Point3d startPoint = line.StartPoint;
+            double angle = line.Angle;
+            for (int i = 0; i < divNum + 1; i++)
+            {
+                points.Add(PolarPoint(startPoint, divDist * i, angle));
+            }
+            if (divDist * divNum != line.Length)
+            {
+                points.Add(line.EndPoint);
+            }
+            return points;
+        }
+        private List<Point3d> GetBaseLineDivPoints(Line line, int divNum)
+        {
+            return GetBaseLineDivPoints(line, line.Length / divNum);
+        }
+        private Point3d PolarPoint(Point3d startPoint, double dist, double angle)
+        {
+            //double X = startPoint.X + dist * Math.Cos(AngleToDegree(angle));
+            //double Y = startPoint.Y + dist * Math.Sin(AngleToDegree(angle));
+            double X = startPoint.X + dist * Math.Cos((angle));
+            double Y = startPoint.Y + dist * Math.Sin((angle));
+            return new Point3d(X, Y, 0);
+        }
+        public List<ObjectId> AddEntityReturnList(Database db, Entity[] ent)
+        {
+            List<ObjectId> ids = new List<ObjectId>();
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                BlockTable bt = (BlockTable)trans.GetObject(db.BlockTableId, OpenMode.ForRead);
+                BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                //foreach (var entity in ent)
+                //{
+                //    ids.Add(btr.AppendEntity(entity));
+                //    trans.AddNewlyCreatedDBObject(entity, true);
+                //}
+                for (int i = 0; i < ent.Length; i++)
+                {
+                    ids.Add(btr.AppendEntity(ent[i]));
+                    trans.AddNewlyCreatedDBObject(ent[i], true);
+                }
+                //为什么直线生成的多个点只显示第一个且无法捕捉后面的？？
+                trans.Commit();
+            }
+            return ids;
+        }
+        private List<Line> GetDivLines(Point3d[] points, double angle, double length)
+        {
+            List<Line> lines = new List<Line>();
+            foreach (var item in points)
+            {
+                lines.Add(new Line(item, PolarPoint(item, length, angle)));
+            }
+            return lines;
+        }
+        private List<Line> ModifyDivLines(Line[] lines, Entity ent)
+        {
+            List<Line> divLines = new List<Line>();
+            foreach (var line in lines)
+            {
+                Point3dCollection insertPoints = new Point3dCollection();
+                line.IntersectWith(ent, Intersect.ExtendThis, insertPoints, IntPtr.Zero, IntPtr.Zero);
+                if (insertPoints.Count > 0)
+                {
+                    line.EndPoint = insertPoints[0];
+                    divLines.Add(line);
+                }
+            }
+            return divLines;
+        }
+        private List<DBText> GetDivDimTexts(Line[] lines, double height, double dist)
+        {
+            List<DBText> texts = new List<DBText>();
+            Database db = HostApplicationServices.WorkingDatabase;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                foreach (var item in lines)
+                {
+                    DBText text = new DBText();
+                    //text.TextString = item.Length.ToString();
+                    if (item.Angle >= 0 && item.Angle <= Math.PI)
+                    {
+                        text.TextString = string.Format("{0:N}", item.Length);
+                        text.Rotation = item.Angle;
+                        text.HorizontalMode = TextHorizontalMode.TextRight;
+                    }
+                    else
+                    {
+                        text.TextString = "-" + string.Format("{0:N}", item.Length);
+                        text.Rotation = item.Angle + Math.PI;
+                        text.HorizontalMode = TextHorizontalMode.TextLeft;
+                    }
+                    text.Position = PolarPoint(item.StartPoint, dist, item.Angle);
+                    text.Height = height;
+                    text.VerticalMode = TextVerticalMode.TextVerticalMid;
+                    text.AlignmentPoint = text.Position;
+                    texts.Add(text);
+                }
+
+                trans.Commit();
+            }
+            return texts;
+        }
+        private AddLayerResult AddLayer(Database db, string layerName)
+        {
+            AddLayerResult res = new AddLayerResult();
+            try
+            {
+                SymbolUtilityServices.ValidateSymbolName(layerName, false);
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+                res.status = AddLayerStatus.IllegalLayerName;
+                return res;
+            }
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                if (!lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = new LayerTableRecord();
+                    ltr.Name = layerName;
+                    lt.UpgradeOpen();
+                    res.value = lt.Add(ltr);
+                    lt.DowngradeOpen();
+                    trans.AddNewlyCreatedDBObject(ltr, true);
+                    trans.Commit();
+                    res.status = AddLayerStatus.AddLayerOK;
+                    res.layerName = layerName;
+                }
+                else
+                {
+                    MessageBox.Show("图层已存在");
+                    res.status = AddLayerStatus.LayerNameExist;
+                }
+            }
+            return res;
+        }
+        private enum AddLayerStatus
+        {
+            AddLayerOK,
+            IllegalLayerName,
+            LayerNameExist
+        }
+        private struct AddLayerResult
+        {
+            public AddLayerStatus status;
+            public string layerName;
+            public ObjectId value;
+            //ObjectId value = ObjectId.Null;
+        }
+        public ChangePropertyStatus ChangeLayerColor(Database db, string layerName, short colorIndex)
+        {
+            ChangePropertyStatus status;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                if (lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = lt[layerName].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    ltr.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
+                    status = ChangePropertyStatus.ChangeDone;
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    status = ChangePropertyStatus.NotExist;
+                }
+                trans.Commit();
+            }
+            return status;
+        }
+        public bool ChangeLayerLock(Database db, string layerName)
+        {
+            //ChangePropertyStatus status;
+            bool status;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                if (lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = lt[layerName].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    ltr.IsOff = true;
+                    ltr.IsFrozen = true;
+                    ltr.IsLocked = true;
+                    //ltr.Color = Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
+                    //status = ChangePropertyStatus.ChangeDone;
+                    status = true;
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    //status = ChangePropertyStatus.NotExist;
+                    status = false;
+                }
+                trans.Commit();
+            }
+            return status;
+        }
+        public bool ChangeLayerLineWeight(Database db, string layerName, LineWeight lineWeight)
+        {
+            bool status;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                if (lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = lt[layerName].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    ltr.LineWeight = lineWeight;
+                    status = true;
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    status = false;
+                }
+                trans.Commit();
+            }
+            return status;
+        }
+        public enum ChangePropertyStatus
+        {
+            ChangeDone,
+            NotExist,
+        }
+        public bool SetCurrentLayer(Database db, string layerName)
+        {
+            bool isSetOK = false;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                if (lt.Has(layerName))
+                {
+                    ObjectId layerId = lt[layerName];
+                    if (db.Clayer != layerId)
+                    {
+                        db.Clayer = layerId;
+                        isSetOK = true;
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    isSetOK = false;
+                }
+                trans.Commit();
+            }
+            return isSetOK;
+        }
+        public List<LayerTableRecord> GetAllLayers(Database db)
+        {
+            List<LayerTableRecord> layerList = new List<LayerTableRecord>();
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                foreach (ObjectId item in lt)
+                {
+                    LayerTableRecord ltr = item.GetObject(OpenMode.ForRead) as LayerTableRecord;
+                    layerList.Add(ltr);
+                }
+                trans.Commit();
+            }
+            return layerList;
+        }
+        public List<string> GetAllLayerNames(Database db)
+        {
+            List<string> layerList = new List<string>();
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                //要先对图层内容检查才能后续
+                lt.GenerateUsageData();
+                foreach (ObjectId item in lt)
+                {
+                    LayerTableRecord ltr = item.GetObject(OpenMode.ForRead) as LayerTableRecord;
+                    layerList.Add(ltr.Name);
+                }
+                trans.Commit();
+            }
+            return layerList;
+        }
+        public bool DeleteLayer(Database db, string layerName)
+        {
+            if (layerName == "0" || layerName == "Defpoints") return false;
+            bool canBeDelete = false;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                lt.GenerateUsageData();
+                if (lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = lt[layerName].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    //ObjectId layerId = lt[layerName];
+                    if (!ltr.IsUsed && db.Clayer != lt[layerName])
+                    {
+                        ltr.Erase();
+                        canBeDelete = true;
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    canBeDelete = true;
+                }
+                trans.Commit();
+            }
+            return canBeDelete;
+        }
+        public bool DeleteLayer(Database db, string layerName, bool forceDelete)
+        {
+            if (layerName == "0" || layerName == "Defpoints") return false;
+            bool canBeDelete = false;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                lt.GenerateUsageData();
+                if (lt.Has(layerName))
+                {
+                    LayerTableRecord ltr = lt[layerName].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    //ObjectId layerId = lt[layerName];
+                    if (forceDelete)
+                    {
+                        if (ltr.IsUsed)
+                        {
+                            DeleteAllEntityInLayer(ltr);
+                        }
+                        if (db.Clayer == lt[layerName])
+                        {
+                            db.Clayer = lt["0"];
+                        }
+                        ltr.Erase();
+                        canBeDelete = true;
+                    }
+                    else
+                    {
+                        if (!ltr.IsUsed && db.Clayer != lt[layerName])
+                        {
+                            ltr.Erase();
+                            canBeDelete = true;
+                        }
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("图层不存在");
+                    canBeDelete = true;
+                }
+                trans.Commit();
+            }
+            return canBeDelete;
+        }
+        public void DeleteAllEntityInLayer(LayerTableRecord ltr)
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            Editor ed = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Editor;
+            TypedValue[] value = new TypedValue[]
+            {
+                new TypedValue((int)DxfCode.LayerName,ltr.Name)
+            };
+            SelectionFilter filter = new SelectionFilter(value);
+            PromptSelectionResult psr = ed.SelectAll(filter);
+            if (psr.Status == PromptStatus.OK)
+            {
+                ObjectId[] ids = psr.Value.GetObjectIds();
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    //BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    //BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace],OpenMode.ForWrite) as BlockTableRecord;
+                    //LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                    //lt.GenerateUsageData();
+                    foreach (ObjectId item in ids)
+                    {
+                        Entity ent = item.GetObject(OpenMode.ForWrite) as Entity;
+                        ent.Erase();
+                    }
+                    trans.Commit();
+                }
+            }
+        }
+        public void DeleteVoidLayer(Database db)
+        {
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+                lt.GenerateUsageData();
+                foreach (ObjectId item in lt)
+                {
+                    LayerTableRecord ltr = item.GetObject(OpenMode.ForWrite) as LayerTableRecord;
+                    if (!ltr.IsUsed)
+                    {
+                        ltr.Erase();
+                    }
+                }
+                trans.Commit();
+            }
+        }
+        private void AddTextStyle(Database db, string textStyleName)
+        {
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                TextStyleTable tst = trans.GetObject(db.TextStyleTableId, OpenMode.ForRead) as TextStyleTable;
+                if (!tst.Has(textStyleName))
+                {
+                    TextStyleTableRecord tstr = new TextStyleTableRecord();
+                    tstr.Name = textStyleName;
+                    tst.UpgradeOpen();
+                    tst.Add(tstr);
+                    trans.AddNewlyCreatedDBObject(tstr, true);
+                    tst.DowngradeOpen();
+                }
+                trans.Commit();
+            }
+        }
+        static ObjectId GetArrowObjectId(string arrow, string newArrName)
+        {
+            ObjectId arrObjId = ObjectId.Null;
+            Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            string oldArrName = Autodesk.AutoCAD.ApplicationServices.Application.GetSystemVariable(arrow) as string;
+            Autodesk.AutoCAD.ApplicationServices.Application.SetSystemVariable(arrow, newArrName);
+            if (oldArrName.Length != 0)
+                Autodesk.AutoCAD.ApplicationServices.Application.SetSystemVariable(arrow, oldArrName);
+            Transaction tr = db.TransactionManager.StartTransaction();
+            using (tr)
+            {
+                BlockTable bt = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+                arrObjId = bt[newArrName];
+                tr.Commit();
+            }
+            return arrObjId;
+        }
+        private ObjectId AddDimStyle(Database db, string dimStyleName)
+        {
+            ObjectId dimStyleId = ObjectId.Null;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                DimStyleTable dst = trans.GetObject(db.DimStyleTableId, OpenMode.ForRead) as DimStyleTable;
+                if (!dst.Has(dimStyleName))
+                {
+                    DimStyleTableRecord dstr = new DimStyleTableRecord();
+                    dstr.Name = dimStyleName;
+                    dstr.Dimsah = true;
+                    //ObjectId id1 = GetArrowObjectId("DIMBLK1", "_DOT");
+                    //ObjectId id2 = GetArrowObjectId("DIMBLK2", "_CLOSED");
+                    ObjectId id1 = GetArrowObjectId("DIMBLK1", "_ARCHTICK");
+                    ObjectId id2 = GetArrowObjectId("DIMBLK1", "_ARCHTICK");
+                    dstr.Dimblk1 = id1;
+                    dstr.Dimblk2 = id2;
+                    dstr.Dimclrd = Color.FromColorIndex(ColorMethod.ByAci, 2);
+                    dst.UpgradeOpen();
+                    dimStyleId = dst.Add(dstr);
+                    trans.AddNewlyCreatedDBObject(dstr, true);
+                    dst.DowngradeOpen();
+                }
+                trans.Commit();
+            }
+            return dimStyleId;
         }
         //测试通用方法
         [CommandMethod("Cmd1", CommandFlags.UsePickSet)]
         public void Cmd1()
         {
-            Database db = Application.DocumentManager.MdiActiveDocument.Database;
+            Database db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Database;
 
-
-            //0309 DrawJig仿写移动命令 参考位移 必要性不大 没细看
-            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-            PromptSelectionResult psr = ed.SelectImplied();
-            if (psr.Status != PromptStatus.OK)
-            {
-                psr = ed.GetSelection();
-            }
-            Point3d pointBase = new Point3d(0, 0, 0);
-            PromptPointOptions ppo = new PromptPointOptions("\n 指定基点或[位移(D)]<位移>：");
-            ppo.AllowNone = true;
-            ppo.BasePoint = pointBase;
-            ppo.UseBasePoint = true;
-            PromptPointResult ppr = ed.GetPoint(ppo);
-            if (ppr.Status == PromptStatus.Cancel) return;
-            if (ppr.Status == PromptStatus.OK) pointBase = ppr.Value;
-            List<Entity> entList = new List<Entity>();
-            ObjectId[] ids = psr.Value.GetObjectIds();
-            entList = GetEntity(ids);
-            //改原位图形底色
-            LowColorEntity(entList, 211);
-            //交互类要先声明
-            MoveJig moveJig = new MoveJig(entList, pointBase);
-            PromptResult pr = ed.Drag(moveJig);
-
-
+            //0317 注释样式DIMSTY
+            AddDimStyle(db, "111");
+            //遍历样式
+            //using (Transaction trans = db.TransactionManager.StartTransaction())
+            //{
+            //    StringBuilder sb = new StringBuilder();
+            //    DimStyleTable dst = trans.GetObject(db.DimStyleTableId, OpenMode.ForRead) as DimStyleTable;
+            //    foreach (ObjectId item in dst)
+            //    {
+            //        DimStyleTableRecord dstr = item.GetObject(OpenMode.ForRead) as DimStyleTableRecord;
+            //        sb.Append(dstr.Name + "\n");
+            //    }
+            //    MessageBox.Show(sb.ToString());
+            //}
+            //0317 文字样式ST
+            //AddTextStyle(db, "111");
+            //0316 删除图层
+            //DeleteLayer(db, "111");
+            //强制删除方法可以不考虑这层有无图元，是否当前图层
+            //DeleteLayer(db, "111", true);
+            //DeleteVoidLayer(db);
+            //0316 图层操作 
+            //ChangeLayerColor(db, "111", 2);
+            //ChangeLayerLock(db, "111");
+            //ChangeLayerLineWeight(db, "111", LineWeight.LineWeight013);
+            //改图层可能目标被锁、冻、藏，需要判断；还要判断是否已经是当前
+            //SetCurrentLayer(db, "111");
+            //List<string> lns= GetAllLayerNames(db);
+            //StringBuilder sb = new StringBuilder();
+            //foreach (string layer in lns) 
+            //{ 
+            //    sb.Append(layer+"\n");
+            //}
+            //MessageBox.Show(sb.ToString()+"\n"+lns.Count);
+            //新建图层
+            //AddLayer(db, "111");
+            //例程结束
+            ////0315 直径标注
+            //DiametricDimension dDim= new DiametricDimension();
+            //dDim.ChordPoint= new Point3d(10, 10, 0);
+            //dDim.FarChordPoint = new Point3d(50, 10, 0);
+            //dDim.LeaderLength = 10;
+            //AddEntityToModelSpace(db, dDim);
+            ////例程结束
+            ////0315 半径标注
+            //RadialDimension rDim= new RadialDimension();
+            //rDim.Center = new Point3d(10, 10, 0);
+            //rDim.ChordPoint= new Point3d(20, 30, 0);
+            //rDim.LeaderLength = 10;
+            //AddEntityToModelSpace(db, rDim);
+            ////例程结束
+            ////0315 弧长标注
+            ////ArcDimension arcDim = new ArcDimension(new Point3d(10, 10, 0), new Point3d(20, 10, 0), new Point3d(20, 20, 0), new Point3d(25, 10, 0),"<>",db.Dimstyle);
+            //Arc arc = new Arc();
+            //arc.Center = new Point3d(10, 10, 0);
+            //arc.Radius = 50;
+            //arc.StartAngle = 0;
+            //arc.EndAngle = Math.PI * 0.25;
+            //ArcDimension arcDim = new ArcDimension(arc.Center, arc.StartPoint, arc.EndPoint, new Point3d(arc.EndPoint.X + 5, arc.EndPoint.Y, arc.EndPoint.Z), "<>", db.Dimstyle);
+            //AddEntityToModelSpace(db, arcDim);
+            ////例程结束
+            ////0315 角度标注
+            //LineAngularDimension2 iDim = new LineAngularDimension2();
+            //iDim.XLine1Start = new Point3d(100, 100, 0);
+            //iDim.XLine1End = new Point3d(200, 100, 0);
+            //iDim.XLine2Start = new Point3d(100, 150, 0);
+            //iDim.XLine2End = new Point3d(200, 300, 0);
+            //iDim.ArcPoint=new Point3d(200,300,0);
+            //AddEntityToModelSpace(db,iDim);
+            ////例程结束
+            ////0315 对齐标注,跟线性标注很类似？？
+            //AlignedDimension aDim = new AlignedDimension();
+            //Point3d p1 = new Point3d(100, 100, 0);
+            //Point3d p2 = new Point3d(200, 200, 0);
+            //aDim.XLine1Point = p1;
+            //aDim.XLine2Point = p2;
+            //aDim.DimLinePoint= new Point3d(300, 150, 0);
+            //AddEntityToModelSpace(db,aDim);
+            ////例程结束
+            ////0315 线性标注
+            ////线性标注
+            //Point3d p1 = new Point3d(100, 100, 0);
+            //Point3d p2 = new Point3d(200, 200, 0);
+            //Line line = new Line(p1, p2);
+            //RotatedDimension rotateDim = new RotatedDimension();
+            //rotateDim.XLine1Point = p1;
+            //rotateDim.XLine2Point = p2;
+            //rotateDim.DimLinePoint = new Point3d(300, 150, 0);
+            //////垂直与线标注
+            ////rotateDim.Rotation = line.Angle;
+            ////rotateDim.TextRotation = Math.PI * 0.5;
+            ////注释+文字替换
+            //rotateDim.DimensionText = "<>米";
+            ////箭头大小
+            //rotateDim.Dimasz = 10;
+            //rotateDim.Rotation = p1.GetVectorTo(p2).GetAngleTo(Vector3d.XAxis);
+            //Vector2d v = new Vector2d();
+            //AddEntityToModelSpace(db, rotateDim);
+            //double num = rotateDim.Measurement;
+            //MessageBox.Show(num.ToString());
+            ////例程结束
+            ////0315 实现自动采样线功能
+            //Editor ed = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Editor;
+            //PromptEntityResult perBase = ed.GetEntity("\n 请选择基准线");
+            //if (perBase.Status != PromptStatus.OK) return;
+            //PromptEntityResult perCurve = ed.GetEntity("\n 请选择采样线");
+            //if (perCurve.Status != PromptStatus.OK) return;
+            ////获取两线实体对象
+            //Entity baseEntity = GetEntity(db, perBase.ObjectId);
+            //Entity curve = GetEntity(db, perCurve.ObjectId);
+            //if (baseEntity is Line)
+            //{
+            //    Line baseLine = baseEntity as Line;
+            //    List<Point3d> divPoints = GetBaseLineDivPoints(baseLine, 11);
+            //    ////尝试生成节点测试
+            //    //List<DBPoint> dBPoints = new List<DBPoint>();
+            //    //foreach (var item in divPoints)
+            //    //{
+            //    //    dBPoints.Add(new DBPoint(item));
+            //    //}
+            //    //AddEntityReturnList(db, dBPoints.ToArray());
+            //    ////在节点生成线测试
+            //    //List<Line> divLines = GetDivLines(divPoints.ToArray(), baseLine.Angle + Math.PI * 0.5, 100);
+            //    //AddEntityReturnList(db, divLines.ToArray());
+            //    List<Line> divLines = GetDivLines(divPoints.ToArray(), baseLine.Angle + Math.PI * 0.5, 100);
+            //    divLines = ModifyDivLines(divLines.ToArray(), curve);
+            //    //文字处理
+            //    List<DBText> dimTexts = GetDivDimTexts(divLines.ToArray(), 15, -10);
+            //    AddEntityReturnList(db, divLines.ToArray());
+            //    AddEntityReturnList(db, dimTexts.ToArray());
+            //}
+            //else
+            //{
+            //    ed.WriteMessage("\n 基准线必须为直线");
+            //}
+            ////例程结束
+            ////PickMText();
+            ////0313 多行文字
+            //MText mText = new MText();
+            //mText.Location = new Point3d(50, 50, 0);
+            ////mText.Contents = "Hello,World.\n C# is 12";
+            ////双行带横线
+            ////mText.Contents = "\\A1;%%P30\\H0.5x;\\SH7/P7;";
+            //string t1 = "%%P30";
+            //mText.Contents = $"\\A1;{t1}\\H0.5x;\\SH7/{t1};";
+            ////双行无横线
+            ////mText.Contents = "\\A1;%%P30 \\H0.5x;\\SH7^P7; ";
+            ////斜线
+            ////mText.Contents = "\\A1;%%P30 \\H0.5x;\\SH7#P7; ";
+            //mText.Width = 30;
+            //AddEntityToModelSpace(db, mText);
+            ////例程结束
+            ////0312 文字注释
+            ////生成一系列注释线
+            //Line[] lines = new Line[10];
+            //Point3d[] pt1 = new Point3d[10];
+            //Point3d[] pt2 = new Point3d[10];
+            //for (int i = 0; i < lines.Length; i++)
+            //{
+            //    pt1[i] = new Point3d(50, 50 + 20 * i, 0);
+            //    pt2[i] = new Point3d(150, 50 + 20 * i, 0);
+            //    lines[i] = new Line(pt1[i], pt2[i]);
+            //}
+            //AddEntityToModelSpace(db, lines);
+            ////创建单行文字
+            //DBText text0 = new DBText();
+            //text0.Position = new Point3d(50, 50, 0);
+            //text0.TextString = "Hello,World."+ TextSpecialSymbol.Cube;
+            //text0.Height = 100;
+            //text0.ColorIndex = 2;
+            //text0.Rotation = Math.PI * 0.5;
+            ////text0.IsMirroredInX = true;
+            ////TextAlign会把字体恢复到默认高度
+            //text0.HorizontalMode = TextHorizontalMode.TextAlign;
+            ////默认的对齐点是原点
+            //text0.AlignmentPoint = text0.Position;
+            //text0.VerticalMode = TextVerticalMode.TextBottom;
+            //AddEntityToModelSpace(db, text0);
+            ////例程结束
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //ed.WriteMessage(TextSpecialSymbol.Cube);
+            ////0309 DrawJig仿写移动命令 参考位移 必要性不大 没细看
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //PromptSelectionResult psr = ed.SelectImplied();
+            //if (psr.Status != PromptStatus.OK)
+            //{
+            //    psr = ed.GetSelection();
+            //}
+            //if (psr.Status != PromptStatus.OK) return;
+            //Point3d pointBase = new Point3d(0, 0, 0);
+            //PromptPointOptions ppo = new PromptPointOptions("\n 指定基点或[位移(D)]<位移>：");
+            //ppo.AllowNone = true;
+            ////ppo.BasePoint = pointBase;
+            ////ppo.UseBasePoint = true;
+            //PromptPointResult ppr = ed.GetPoint(ppo);
+            //if (ppr.Status == PromptStatus.Cancel) return;
+            //if (ppr.Status == PromptStatus.OK) pointBase = ppr.Value;
+            ////获取图形对象
+            //List<Entity> entList = new List<Entity>();
+            //ObjectId[] ids = psr.Value.GetObjectIds();
+            //entList = GetEntity(ids);
+            ////复制新对象，传递给MoveJig类的对象
+            //Matrix3d mt = Matrix3d.Displacement(new Vector3d(0, 0, 0));
+            //List<Entity> entListCopy = CopyEntity(entList, mt);
+            ////为什么cancel不成功要另外写copy2？
+            //List<Entity> entListCopy2 = CopyEntity(entList, mt);
+            ////改原位图形底色
+            //LowColorEntity(entList, 211);
+            ////交互类要先声明
+            //MoveJig moveJig = new MoveJig(entListCopy, pointBase);
+            //PromptResult pr = ed.Drag(moveJig);
+            ////确认后处理
+            //if (pr.Status == PromptStatus.OK)
+            //{
+            //    List<Entity> ents = moveJig.GetEntity();
+            //    AddEntityToModelSpace(db, ents.ToArray());
+            //    DeleteEntitys(entList.ToArray());
+            //}
+            //if (pr.Status == PromptStatus.Cancel)
+            //{
+            //    AddEntityToModelSpace(db, entListCopy2.ToArray());
+            //    DeleteEntitys(entList.ToArray());
+            //}
+            ////响应中间空格
+            //if (pr.Status == PromptStatus.Keyword && pr.StringResult == " ")
+            //{
+            //    //Vector3d vector = Point3d.Origin.GetVectorTo(pointBase);
+            //    //mt = Matrix3d.Displacement(vector);
+            //    foreach (var item in entListCopy2)
+            //    {
+            //        MoveEntity(item, Point3d.Origin, pointBase);
+            //    }
+            //    AddEntityToModelSpace(db, entListCopy2.ToArray());
+            //    DeleteEntitys(entList.ToArray());
+            //}
+            ////例程结束
             ////0309 先选择后处理的办法 选择集处理
             //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
             ////先操作再选择的写法SelectImplied
@@ -1027,7 +1804,6 @@ namespace ACTest
         //    Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
         //    ed.WriteMessage("Hello,AucoCAD");
         //}
-
         private Polyline MakeArrow()
         {
             var entity = new Polyline();
