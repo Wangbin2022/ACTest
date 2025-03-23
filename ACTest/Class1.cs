@@ -10,7 +10,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Windows;
-
+using System.Windows.Controls;
+using Application = Autodesk.AutoCAD.ApplicationServices.Application;
+using AcadApp = Autodesk.AutoCAD.Windows;
+using Wnd = System.Windows.Forms;
+using System.IO;
 
 //声明命令存储位置，加快执行查找速度
 [assembly: CommandClass(typeof(Class1))]
@@ -1140,14 +1144,433 @@ namespace ACTest
             }
             return dimStyleId;
         }
+        private ObjectId LoadLineType(Database db, string lineTypeName)
+        {
+            ObjectId lineTypeId = ObjectId.Null;
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                LinetypeTable ltt = trans.GetObject(db.LinetypeTableId, OpenMode.ForRead) as LinetypeTable;
+                if (!ltt.Has(lineTypeName))
+                {
+                    //载入线型表
+                    db.LoadLineTypeFile(lineTypeName, "acadiso.lin");
+                    lineTypeId = ltt[lineTypeName];
+                }
+                trans.Commit();
+            }
+            return lineTypeId;
+        }
+        public class BlockTool
+        {
+            /// <summary>
+            /// 更新块参照的属性
+            /// </summary>
+            /// <param name="BlockRefId">块参照的ObjectId</param>
+            /// <param name="attrNameValues">属性字典</param>
+            public void UpdateBlockAttr(ObjectId BlockRefId, Dictionary<string, string> attrNameValues)
+            {
+                using (Transaction trans = BlockRefId.Database.TransactionManager.StartTransaction())
+                {
+                    if (BlockRefId != ObjectId.Null)
+                    {
+                        BlockReference br = (BlockReference)BlockRefId.GetObject(OpenMode.ForRead);
+                        foreach (ObjectId item in br.AttributeCollection)
+                        {
+                            AttributeReference attRef = (AttributeReference)item.GetObject(OpenMode.ForRead);
+                            //判断属性字典中是否包含要更改的属性值
+                            if (attrNameValues.ContainsKey(attRef.Tag.ToString()))
+                            {
+                                attRef.UpgradeOpen();
+                                attRef.TextString = attrNameValues[attRef.Tag.ToString()].ToString();
+                                attRef.DowngradeOpen();
+                            }
+                        }
+                    }
+                    trans.Commit();
+                }
+            }
+            public ObjectId InsertBlockReference(Database db, ObjectId BlockRecordId, Point3d position, double rotation, Scale3d scale)
+            {
+                ObjectId blkRefId = ObjectId.Null;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    if (bt.Has(BlockRecordId))
+                    {
+                        BlockReference br = new BlockReference(position, BlockRecordId);
+                        br.Rotation = rotation;
+                        br.ScaleFactors = scale;
+                        BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                        blkRefId = btr.AppendEntity(br);
+                        trans.AddNewlyCreatedDBObject(br, true);
+                    }
+                    trans.Commit();
+                }
+                return blkRefId;
+            }
+            public ObjectId InsertBlockReference(Database db, ObjectId BlockRecordId, Point3d position)
+            {
+                ObjectId blkRefId = ObjectId.Null;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    if (bt.Has(BlockRecordId))
+                    {
+                        BlockReference br = new BlockReference(position, BlockRecordId);
+                        BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                        blkRefId = btr.AppendEntity(br);
+                        trans.AddNewlyCreatedDBObject(br, true);
+                    }
+                    trans.Commit();
+                }
+                return blkRefId;
+            }
+            public ObjectId InsertAttrBlockReference(Database db, ObjectId BlockRecordId, Point3d position)
+            {
+                ObjectId blkRefId = ObjectId.Null;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                    if (bt.Has(BlockRecordId))
+                    {
+                        BlockReference br = new BlockReference(position, BlockRecordId);
+                        blkRefId = btr.AppendEntity(br);
+                        trans.AddNewlyCreatedDBObject(br, true);
+                    }
+                    trans.Commit();
+                }
+                return blkRefId;
+            }
+            public ObjectId InsertAttrBlockReference(Database db, ObjectId BlockRecordId, Point3d position, double rotation, Scale3d scale)
+            {
+                ObjectId blkRefId = ObjectId.Null;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    BlockTableRecord btr = trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                    if (bt.Has(BlockRecordId))
+                    {
+                        BlockReference br = new BlockReference(position, BlockRecordId);
+                        br.Rotation = rotation;
+                        br.ScaleFactors = scale;
+                        blkRefId = btr.AppendEntity(br);
+                        //添加属性定义
+                        BlockTableRecord blockRecord = BlockRecordId.GetObject(OpenMode.ForRead) as BlockTableRecord;
+                        if (blockRecord.HasAttributeDefinitions)
+                        {
+                            foreach (ObjectId item in blockRecord)
+                            {
+                                DBObject obj = item.GetObject(OpenMode.ForRead);
+                                if (obj is AttributeDefinition)
+                                {
+                                    //声明属性参照
+                                    AttributeReference attrRef = new AttributeReference();
+                                    attrRef.SetAttributeFromBlock((AttributeDefinition)obj, br.BlockTransform);
+                                    br.AttributeCollection.AppendAttribute(attrRef);
+                                    trans.AddNewlyCreatedDBObject(attrRef, true);
+                                }
+                            }
+                        }
+                        trans.AddNewlyCreatedDBObject(br, true);
+                    }
+                    trans.Commit();
+                }
+                return blkRefId;
+            }
+            public ObjectId AddBlockTableRecord(Database db, string btrName, List<Entity> ents)
+            {
+                ObjectId btrId = ObjectId.Null;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    if (!bt.Has(btrName))
+                    {
+                        BlockTableRecord btr = new BlockTableRecord();
+                        btr.Name = btrName;
+                        for (int i = 0; i < ents.Count; i++)
+                        {
+                            btr.AppendEntity(ents[i]);
+                            //trans.AddNewlyCreatedDBObject(ents[i], true);
+                        }
+                        bt.UpgradeOpen();
+                        bt.Add(btr);
+                        trans.AddNewlyCreatedDBObject(btr, true);
+                        bt.DowngradeOpen();
+                    }
+                    btrId = bt[btrName];
+                    trans.Commit();
+                }
+                return btrId;
+            }
+        }
+        public static class MyBlockTableRecord
+        {
+            //普通块定义
+            private static string blockName = "block";
+            private static List<Entity> blockEnts = new List<Entity>();
+            private static ObjectId blockId = ObjectId.Null;
+            public static string BlockName { get => blockName; set => blockName = value; }
+            public static List<Entity> BlockEnts
+            {
+                get
+                {
+                    Circle circle = new Circle(Point3d.Origin, Vector3d.ZAxis, 10);
+                    Line line1 = new Line(new Point3d(-5, 0, 0), new Point3d(5, 0, 0));
+                    Line line2 = new Line(new Point3d(0, 5, 0), new Point3d(0, -5, 0));
+                    blockEnts.Add(circle);
+                    blockEnts.Add(line1);
+                    blockEnts.Add(line2);
+                    return MyBlockTableRecord.blockEnts;
+                }
+            }
+            public static ObjectId BlockId { get => blockId; set => blockId = value; }
+            //属性块定义
+            private static string attrBlockName = "attrBlock";
+            private static List<Entity> attrBlockEnts = new List<Entity>();
+            private static ObjectId attrBlockId = ObjectId.Null;
+            public static string AttrBlockName { get => attrBlockName; set => attrBlockName = value; }
+            public static List<Entity> AttrBlockEnts
+            {
+                get
+                {
+                    Circle circle = new Circle(Point3d.Origin, Vector3d.ZAxis, 10);
+                    Line line1 = new Line(new Point3d(-5, 0, 0), new Point3d(5, 0, 0));
+                    Line line2 = new Line(new Point3d(0, 5, 0), new Point3d(0, -5, 0));
+                    //加属性定义
+                    AttributeDefinition attr = new AttributeDefinition();
+                    attr.Position = new Point3d(12, 2, 0);
+                    attr.Tag = "编号";
+                    attr.Prompt = "天线编号";
+                    attr.TextString = "attr-05";
+                    attr.Height = 3;
+                    AttributeDefinition attr2 = new AttributeDefinition();
+                    attr2.Position = new Point3d(12, -8, 0);
+                    attr2.Tag = "功率";
+                    attr2.Prompt = "功率大小";
+                    attr2.TextString = "10kW";
+                    attr2.Height = 3;
+                    attrBlockEnts.Add(circle);
+                    attrBlockEnts.Add(line1);
+                    attrBlockEnts.Add(line2);
+                    attrBlockEnts.Add(attr);
+                    attrBlockEnts.Add(attr2);
+                    return MyBlockTableRecord.attrBlockEnts;
+                }
+            }
+            public static ObjectId AttrBlockId { get => attrBlockId; set => attrBlockId = value; }
+        }
+        public struct TxtData
+        {
+            public string blockName;
+            public string LayerName;
+            public Point3d position;
+            public Dictionary<string, string> attrs;
+        }
+        private int TransData(string[] contents, out List<TxtData> datas)
+        {
+            datas = new List<TxtData>();
+            //根据返回行数判断出错位置 
+            int row = -1;
+            TxtData data = new TxtData();
+            for (int i = 0; i < contents.Length; i++)
+            {
+                string[] con = contents[i].Split(new char[] { ',' });
+                data.blockName = con[0];
+                data.LayerName = con[1];
+                double X, Y, Z;
+                if (!double.TryParse(con[2], out X) || double.TryParse(con[3], out Y) || double.TryParse(con[4], out Z))
+                {
+                    row = i;
+                    break;
+                }
+                data.position = new Point3d(X, Y, Z);
+                //向字典写入值，要先声明内存
+                data.attrs = new Dictionary<string, string>();
+                data.attrs.Add("ZS", con[5]);
+                data.attrs.Add("XS", con[6]);
+                datas.Add(data);
+            }
+            return row;
+        }
         //测试通用方法
         [CommandMethod("Cmd1", CommandFlags.UsePickSet)]
         public void Cmd1()
         {
-            Database db = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Database;
+            Database db = Application.DocumentManager.MdiActiveDocument.Database;
 
+            ////0323 Excel新建和交互
+            ////0323 读取文本并整理，添加块实例
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //Wnd.OpenFileDialog openFile = new Wnd.OpenFileDialog();
+            //openFile.Filter = "文本文件(*.txt)|*.txt";
+            //Wnd.DialogResult openRes = openFile.ShowDialog();
+            //if (openRes == Wnd.DialogResult.OK)
+            //{
+            //    string[] contents = File.ReadAllLines(openFile.FileName);
+            //    List<TxtData> datas = new List<TxtData>();
+            //    int row = TransData(contents, out datas);
+            //    if (row < 0)
+            //    {
+            //        //生成块InsertAttrBlockReference
+            //        //判断图层表是否存在，生成图层/
+            //        //向块表添加块
+            //    }
+            //    else ed.WriteMessage($"外部数据文件在第{row + 1}行出错，请检查");
+            //}
+            //0323 保存图形信息到txt
+            //Wnd.SaveFileDialog saveFileDialog = new Wnd.SaveFileDialog();
+            //string[] contents = new string[] { "111", "222" };
+            ////替换数组即可
+            //File.WriteAllLines(saveFileDialog.FileName,contents);
+            //0323 CAD保存文件的窗口调用
+            //AcadApp.SaveFileDialog saveFileDialog=new AcadApp.SaveFileDialog();
+            //Wnd.SaveFileDialog saveFileDialog = new Wnd.SaveFileDialog();
+            //saveFileDialog.Title = "保存图形数据";
+            //saveFileDialog.Filter = "文本文件(*.txt)|*.txt";
+            //string str = db.Filename;//获取文件fullname
+            //saveFileDialog.InitialDirectory = Path.GetDirectoryName(db.Filename);
+            //saveFileDialog.FileName=Path.GetFileNameWithoutExtension(db.Filename);
+            //0323 CAD图元信息统计保存到表格 
+            //一个读取地形图高程点属性块转换表格的实例
+            //建立一个Struct储存要保存的对象，图块名，层名称，XYZ值，属性块的Key和Value
+            //扩展Table类TableEx内建立表
+            ////0323 表格新建
+            //Table table = new Table();
+            ////表行、列数（含通长标题）
+            //table.SetSize(10, 5);
+            //table.SetColumnWidth(25);
+            //table.SetRowHeight(11);
+            //table.Position= new Point3d(0, 100, 0);
+            //table.Cells[0, 0].TextString = "材料统计表";
+            //table.Cells[0, 0].TextHeight = 4;
+            //Color color = Color.FromColorIndex(ColorMethod.ByAci, 2);
+            //table.Cells[0, 0].ContentColor= color;
+            //table.Columns[0].Width = 100;
+            //using (Transaction tr = db.TransactionManager.StartTransaction())
+            //{
+            //    BlockTable bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+            //    BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            //    btr.AppendEntity(table);
+            //    tr.AddNewlyCreatedDBObject(table, true);
+            //    tr.Commit();
+            //}
+            ////例程结束
+            //0322 修改属性块的属性      
+            //0322 插入属性块
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //PromptEntityResult per = ed.GetEntity("选择块");
+            //if (per.Status == PromptStatus.OK)
+            //{
+            //    using (Transaction tr = db.TransactionManager.StartTransaction())
+            //    {
+            //        //属性块
+            //        BlockReference br = per.ObjectId.GetObject(OpenMode.ForRead) as BlockReference;
+            //    }
+            //}
+            //BlockTool blockTool = new BlockTool();
+            //MyBlockTableRecord.AttrBlockId = blockTool.AddBlockTableRecord(db, MyBlockTableRecord.AttrBlockName, MyBlockTableRecord.AttrBlockEnts);
+            //blockTool.InsertAttrBlockReference(db, MyBlockTableRecord.AttrBlockId, new Point3d(10, 10, 0), Math.PI / 4, new Scale3d(1, 1, 1));
+            //例程结束
+            ////0322 属性块定义
+            ////BlockTool blockTool = new BlockTool();
+            ////MyBlockTableRecord.AttrBlockId = blockTool.AddBlockTableRecord(db,MyBlockTableRecord.AttrBlockName,MyBlockTableRecord.AttrBlockEnts);
+            //using (Transaction tr = db.TransactionManager.StartTransaction())
+            //{
+            //    BlockTable bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+            //    foreach (var item in bt)
+            //    {
+            //        if (item==MyBlockTableRecord.AttrBlockId)
+            //        {
+            //            BlockTableRecord btr = (BlockTableRecord)item.GetObject(OpenMode.ForRead);
+            //            foreach (var item1 in btr)
+            //            {
+            //                if (item1.GetObject(OpenMode.ForRead) is AttributeDefinition)
+            //                {
+            //                    AttributeDefinition attr = item1.GetObject(OpenMode.ForRead) as AttributeDefinition;
+            //                }
+            //            }
+            //        }
+            //    }
+            //    tr.Commit();
+            //}
+            ////例程结束
+            ////0321 插入块操作
+            //BlockTool blockTool = new BlockTool();
+            ////MyBlockTableRecord.BlockId = blockTool.InsertBlockReference(db, MyBlockTableRecord.BlockId, new Point3d(100, 100, 0));
+            //Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            //using (Transaction tr = db.TransactionManager.StartTransaction())
+            //{
+            //    BlockTable bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+            //    // 打开模型空间
+            //    BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            //    // 查找名为“111”的块定义
+            //    BlockTable blockTable = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            //    BlockTableRecord blockTableRecord = (BlockTableRecord)tr.GetObject(blockTable[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+            //    BlockTableRecord blockDef = (BlockTableRecord)tr.GetObject(blockTable["111"], OpenMode.ForRead);
+            //    if (blockDef != null)
+            //    {
+            //        MyBlockTableRecord.BlockId = blockTool.InsertBlockReference(db, blockDef.ObjectId, new Point3d(100, 100, 0), Math.PI / 4, new Scale3d(2.0));
+            //        //MyBlockTableRecord.BlockId = blockTool.InsertBlockReference(db, blockDef.ObjectId, new Point3d(100, 100, 0));
+            //        //// 创建块引用
+            //        //BlockReference blockRef = new BlockReference(new Point3d(10, 10, 0), blockDef.ObjectId);
+            //        //// 将块引用添加到模型空间
+            //        //btr.AppendEntity(blockRef);
+            //        //tr.AddNewlyCreatedDBObject(blockRef, true);
+            //        doc.Editor.WriteMessage("块 '111' 已插入到点 (10, 10, 0)。\n");
+            //    }
+            //    else
+            //    {
+            //        doc.Editor.WriteMessage("未找到名为 '111' 的块定义。\n");
+            //    }
+            //    // 提交事务
+            //    tr.Commit();
+            //}
+            ////例程结束
+            ////0321 新建块操作
+            //BlockTool blockTool = new BlockTool();
+            ////MyBlockTableRecord.BlockId= blockTool.AddBlckTableRecord(db, MyBlockTableRecord.BlockName, MyBlockTableRecord.BlockEnts);
+            //Circle circle = new Circle(Point3d.Origin, Vector3d.ZAxis, 10);
+            //Line line1 = new Line(new Point3d(-5, 0, 0), new Point3d(5, 0, 0));
+            //Line line2 = new Line(new Point3d(0, 5, 0), new Point3d(0, -5, 0));
+            //List<Entity> entities =new List<Entity>();
+            //entities.Add(circle);
+            //entities.Add(line1);
+            //entities.Add(line2);
+            //MyBlockTableRecord.BlockId= blockTool.AddBlckTableRecord(db, "111", entities);
+            ////using (Transaction trans = db.TransactionManager.StartTransaction())
+            ////{
+            ////    BlockTable bt = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+            ////    trans.Commit();
+            ////}
+            ////例程结束
+            ////0318 线型操作 保存在acad.lin（英制）acadiso.lin（公制）中
+            //ObjectId linetypeId = LoadLineType(db, "CENTER");
+            //////设置图层线型
+            ////using (Transaction trans = db.TransactionManager.StartTransaction())
+            ////{
+            ////    LayerTable lt = trans.GetObject(db.LayerTableId, OpenMode.ForRead) as LayerTable;
+            ////    if (lt.Has("0")) 
+            ////    {
+            ////        LayerTableRecord ltr = lt["0"].GetObject(OpenMode.ForWrite) as LayerTableRecord;
+            ////        ltr.LinetypeObjectId = objectId;
+            ////    }
+            ////    trans.Commit();
+            ////}
+            //////设置单个元素线型
+            //ObjectId cirId = AddCircleToModelSpace(new Point3d(0, 0, 0), 100);
+            //using (Transaction trans = db.TransactionManager.StartTransaction())
+            //{
+            //    Circle circle = cirId.GetObject(OpenMode.ForWrite) as Circle;
+            //    circle.Linetype = "CENTER";
+            //    //circle.LinetypeId = linetypeId;
+            //    circle.ColorIndex = 2;
+            //    trans.Commit();
+            //}
+            ////设置注释线型，没啥用吧..有样式替代的问题 db.SetDimstyleData(dstr);
+            ////例程结束
             //0317 注释样式DIMSTY
-            AddDimStyle(db, "111");
+            //AddDimStyle(db, "111");
             //遍历样式
             //using (Transaction trans = db.TransactionManager.StartTransaction())
             //{
