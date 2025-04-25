@@ -1399,6 +1399,10 @@ namespace ACTest
         {
             Database db = Application.DocumentManager.MdiActiveDocument.Database;
 
+            //0328 改purge
+            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            ed.WriteMessage("TestNew202503");
+
             ////0323 Excel新建和交互
             ////0323 读取文本并整理，添加块实例
             //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
@@ -1424,7 +1428,7 @@ namespace ACTest
             ////替换数组即可
             //File.WriteAllLines(saveFileDialog.FileName,contents);
             //0323 CAD保存文件的窗口调用
-            //AcadApp.SaveFileDialog saveFileDialog=new AcadApp.SaveFileDialog();
+            //AcadApp.SaveFileDialog saveFileDialog = new AcadApp.SaveFileDialog();
             //Wnd.SaveFileDialog saveFileDialog = new Wnd.SaveFileDialog();
             //saveFileDialog.Title = "保存图形数据";
             //saveFileDialog.Filter = "文本文件(*.txt)|*.txt";
