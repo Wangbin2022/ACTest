@@ -1,0 +1,35 @@
+﻿<Window x:Class="ACTest.LayerManagerView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ACTest"
+        mc:Ignorable="d"
+        Title="LayerManagerView" Height="450" Width="730">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="35"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="35"/>
+        </Grid.RowDefinitions>
+        <GroupBox Grid.Row="1" Grid.Column="0" Margin="5"
+                  Header="显示图层">
+            
+        </GroupBox>
+        <GroupBox Grid.Row="1" Grid.Column="1" Margin="5"
+                  Header="冻结图层">
+
+        </GroupBox>
+        <GroupBox Grid.Row="1" Grid.Column="2" Margin="5"
+                  Header="锁定图层">
+
+        </GroupBox>
+        <Button Grid.Row="2" Grid.ColumnSpan="3" Margin="5"
+                Content="退出" Click="Button_Click"/>
+    </Grid>
+</Window>

@@ -68,17 +68,31 @@
     <Compile Include="Base\BaseBindingCommand.cs" />
     <Compile Include="Base\ObservableObject.cs" />
     <Compile Include="Class1.cs" />
+    <Compile Include="LayerManagerView.xaml.cs">
+      <DependentUpon>LayerManagerView.xaml</DependentUpon>
+    </Compile>
     <Compile Include="ShowAllFonts.cs" />
     <Compile Include="Obselete\DgnPurge.cs" />
     <Compile Include="ProgramClass.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RIbbonTest.cs" />
     <Compile Include="ShowAllLayers.cs" />
+    <Compile Include="TableTemplateViewHorizon.xaml.cs">
+      <DependentUpon>TableTemplateViewHorizon.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Window1.xaml.cs">
       <DependentUpon>Window1.xaml</DependentUpon>
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Page Include="LayerManagerView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="TableTemplateViewHorizon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="Window1.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
@@ -93,6 +107,9 @@
   <ItemGroup>
     <Resource Include="Images\折线16.png" />
     <Resource Include="Images\折线32.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\TableSample.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

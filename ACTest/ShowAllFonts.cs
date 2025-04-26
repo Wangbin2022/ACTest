@@ -35,8 +35,8 @@ namespace ACTest
             //string textFontStyle = "宋体";
             //AddTextStyle(db, textFontStyle);
             //查找所有图层，加入combobox.OK
-            //Window1 window1 = new Window1(Env);
-            //window1.ShowDialog();
+            Window1 window1 = new Window1(Env);
+            window1.ShowDialog();
             //查找当前图层并输出
             //using (Transaction tr = db.TransactionManager.StartTransaction())
             //{
@@ -49,16 +49,16 @@ namespace ACTest
             //    ed.WriteMessage(layerName);
             //}
             //图层颜色转换
-            using (Transaction tr = db.TransactionManager.StartTransaction())
-            {
-                ObjectId currentLayerId = db.Clayer;
-                // 获取图层表记录
-                LayerTableRecord layer = tr.GetObject(currentLayerId, OpenMode.ForRead) as LayerTableRecord;
-                Color color = GetWpfColor(layer.Color);
-                tr.Commit();
-                Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-                ed.WriteMessage(color.R.ToString() + "\n" + color.G.ToString() + "\n" + color.B.ToString());
-            }
+            //using (Transaction tr = db.TransactionManager.StartTransaction())
+            //{
+            //    ObjectId currentLayerId = db.Clayer;
+            //    // 获取图层表记录
+            //    LayerTableRecord layer = tr.GetObject(currentLayerId, OpenMode.ForRead) as LayerTableRecord;
+            //    Color color = GetWpfColor(layer.Color);
+            //    tr.Commit();
+            //    Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //    ed.WriteMessage(color.R.ToString() + "\n" + color.G.ToString() + "\n" + color.B.ToString());
+            //}
 
 
 
@@ -74,7 +74,7 @@ namespace ACTest
                 // 处理真彩色
                 return Color.FromRgb(acColor.Red, acColor.Green, acColor.Blue);
             }
-            return Colors.Black; // 默认颜色
+            return Colors.White; // 默认颜色
         }
         public Color GetRGBFromACI(short colorIndex)
         {

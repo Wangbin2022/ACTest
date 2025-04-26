@@ -7,6 +7,13 @@
         mc:Ignorable="d"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Title="Window1" Height="450" Width="300">
+    <Window.Resources>
+        <!-- 将Color转换为SolidColorBrush -->
+        <local:ColorToBrushConverter x:Key="ColorToBrushConverter"/>
+
+        <!-- 将bool转换为FontWeight -->
+        <local:BoolToFontWeightConverter x:Key="BoolToBoldConverter"/>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -22,9 +29,26 @@
                     </x:Array>
                 </ComboBox.ItemsSource>
             </ComboBox>
-            <ComboBox Margin="5" ItemsSource="{Binding LayerNamesWithCurrent}"
+            <!--<ComboBox Margin="5" ItemsSource="{Binding LayerNamesWithCurrent}"
                       SelectedItem="{Binding SelectedLayer, Mode=TwoWay}"
-                      />
+                      />-->
+            <ComboBox Margin="5" 
+          ItemsSource="{Binding LayerNamesWithCurrent}"
+          SelectedItem="{Binding SelectedLayer, Mode=TwoWay}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <!-- 颜色预览方块 -->
+                            <Border Width="16" Height="16" Margin="0,0,5,0"
+                        Background="{Binding Color, Converter={StaticResource ColorToBrushConverter}}"
+                        BorderBrush="DarkGray" BorderThickness="1"/>
+                            <!-- 图层名称 -->
+                            <TextBlock Text="{Binding Name}" 
+                           FontWeight="{Binding IsCurrentLayer, Converter={StaticResource BoolToBoldConverter}}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
         </StackPanel>
         <Button Content="OK" Grid.Row="1" Command="{Binding GetSelectionCommand}"
                 Margin="5" Click="Button_Click" />
