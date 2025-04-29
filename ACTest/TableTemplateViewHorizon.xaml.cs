@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Autodesk.AutoCAD.ApplicationServices;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,9 +20,10 @@ namespace ACTest
     /// </summary>
     public partial class TableTemplateViewHorizon : Window
     {
-        public TableTemplateViewHorizon()
+        public TableTemplateViewHorizon(Document document)
         {
             InitializeComponent();
+            this.DataContext = new TableTemplateViewModel(document);
         }
 
         private void btn_OK_Click(object sender, RoutedEventArgs e)

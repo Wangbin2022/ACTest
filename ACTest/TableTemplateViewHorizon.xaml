@@ -9,6 +9,12 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         Height="450" Width="720"  Topmost="True"
         WindowStartupLocation="Manual" Left="30" Top="300" ResizeMode="CanMinimize">
+    <Window.Resources>
+        <!-- 将Color转换为SolidColorBrush -->
+        <local:ColorToBrushConverter x:Key="ColorToBrushConverter"/>
+        <!-- 将bool转换为FontWeight -->
+        <local:BoolToFontWeightConverter x:Key="BoolToBoldConverter"/>
+    </Window.Resources>
     <Grid Margin="5">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="3*"/>
@@ -69,9 +75,20 @@
                 <TextBox Grid.Row="1" Grid.Column="3" VerticalAlignment="Center" TextAlignment="Right"
                                                 Background="#EDEDED" Margin="0,0,5,0"
                     Text="{Binding TableScale,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"/>
-                <ComboBox Grid.Row="2" Grid.Column="3" VerticalAlignment="Center" Margin="0,0,5,0" >
-                    
-                    
+                <ComboBox Grid.Row="2" Grid.Column="3" VerticalAlignment="Center" Margin="0,0,5,0" 
+                          ItemsSource="{Binding LayerNamesWithCurrent}"
+          SelectedItem="{Binding SelectedFontLayer, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="16" Height="16" Margin="0,0,5,0"
+                        Background="{Binding Color, Converter={StaticResource ColorToBrushConverter}}"
+                        BorderBrush="DarkGray" BorderThickness="1"/>
+                                <TextBlock Text="{Binding Name}" 
+                           FontWeight="{Binding IsCurrentLayer, Converter={StaticResource BoolToBoldConverter}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
                 </ComboBox>
                 <ComboBox Grid.Row="3" Grid.Column="3" VerticalAlignment="Center" Margin="0,0,5,0"                     
                      SelectedItem="{Binding InnerLineStyle, Mode=TwoWay}">
@@ -82,7 +99,8 @@
                         </x:Array>
                     </ComboBox.ItemsSource>
                 </ComboBox>
-                <ComboBox Grid.Row="1" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0" >
+                <ComboBox Grid.Row="1" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0" 
+                          SelectedItem="{Binding IsFrameSameLayer, Mode=TwoWay}">
                     <ComboBox.ItemsSource>
                         <x:Array Type="sys:String">
                             <sys:String>内外框相同</sys:String>
@@ -90,22 +108,39 @@
                         </x:Array>
                     </ComboBox.ItemsSource>
                 </ComboBox>
-                <ComboBox Grid.Row="2" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0" >
-
+                <ComboBox Grid.Row="2" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                          ItemsSource="{Binding LayerNamesWithCurrent}"
+SelectedItem="{Binding SelectedOutLineLayer, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="16" Height="16" Margin="0,0,5,0"
+                        Background="{Binding Color, Converter={StaticResource ColorToBrushConverter}}"
+                        BorderBrush="DarkGray" BorderThickness="1"/>
+                                <TextBlock Text="{Binding Name}" 
+                           FontWeight="{Binding IsCurrentLayer, Converter={StaticResource BoolToBoldConverter}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <ComboBox Grid.Row="3" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0" 
+                                          ItemsSource="{Binding LayerNamesWithCurrent}"
+SelectedItem="{Binding SelectedInnerLineLayer, Mode=TwoWay}"
+                          IsEnabled="{Binding FrameNotSameLayer,UpdateSourceTrigger=PropertyChanged}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="16" Height="16" Margin="0,0,5,0"
+                        Background="{Binding Color, Converter={StaticResource ColorToBrushConverter}}"
+                        BorderBrush="DarkGray" BorderThickness="1"/>
+                                <TextBlock Text="{Binding Name}" 
+                           FontWeight="{Binding IsCurrentLayer, Converter={StaticResource BoolToBoldConverter}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
 
                 </ComboBox>
-                <ComboBox Grid.Row="3" Grid.Column="5" VerticalAlignment="Center" Margin="0,0,5,0" >
-
-
-                </ComboBox>
-
-                <ComboBox Grid.Row="2" Grid.Column="3" VerticalAlignment="Center" Margin="0,0,5,0"                      
-ItemsSource="{Binding LineStyles}" DisplayMemberPath="Name"
-                    SelectedItem="{Binding BorderStyle, Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}">
-                </ComboBox>
-
-
-            </Grid>          
+            </Grid>
         </GroupBox>
         <GroupBox Grid.Column="1" Header="  明细表格式">
             <Grid >
@@ -116,7 +151,8 @@ ItemsSource="{Binding LineStyles}" DisplayMemberPath="Name"
                 <StackPanel >
                     <TextBlock Text="请根据明细表内容设置每列列宽系数，实际列宽为基准格宽度×该行的列宽系数"  
                       FontSize="11" TextWrapping="Wrap" Width="150" Margin="5"/>
-                    <ComboBox Height="25" Margin="5" ItemsSource="{Binding TableSingles}" DisplayMemberPath="tableName"  SelectedItem = "{Binding SelectedTableSingle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <ComboBox Height="25" Margin="5" ItemsSource="{Binding TableSingles}" DisplayMemberPath="tableName"  SelectedItem = "{Binding SelectedTableSingle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              IsEnabled="{Binding CanExportXML,UpdateSourceTrigger=PropertyChanged}"/> 
                     <DataGrid Height="190"  Margin="5,0,5,0" AutoGenerateColumns="False" 
                               ItemsSource="{Binding ColumnPropertiesList,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" CanUserAddRows="False">
                         <DataGrid.Columns>
@@ -165,7 +201,7 @@ ItemsSource="{Binding LineStyles}" DisplayMemberPath="Name"
             </Grid>
         </GroupBox>
         <DockPanel Grid.Row="1" Grid.ColumnSpan="2">
-            <Button  Content="放置并退出" Height="20" Command="{Binding DrawTableCommand}"
+            <Button  Content="放置并退出" Height="20" Command="{Binding DrawTableCommand}" IsEnabled="{Binding CanExecute,UpdateSourceTrigger=PropertyChanged}"
                      HorizontalAlignment="Stretch" Click="btn_OK_Click"/>
         </DockPanel>
     </Grid>

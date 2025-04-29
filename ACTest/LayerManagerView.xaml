@@ -18,15 +18,15 @@
             <RowDefinition Height="35"/>
         </Grid.RowDefinitions>
         <GroupBox Grid.Row="1" Grid.Column="0" Margin="5"
-                  Header="显示图层">
+                  Header="图层显示设置">
             
         </GroupBox>
         <GroupBox Grid.Row="1" Grid.Column="1" Margin="5"
-                  Header="冻结图层">
+                  Header="图层冻结设置">
 
         </GroupBox>
         <GroupBox Grid.Row="1" Grid.Column="2" Margin="5"
-                  Header="锁定图层">
+                  Header="图层锁定设置">
 
         </GroupBox>
         <Button Grid.Row="2" Grid.ColumnSpan="3" Margin="5"

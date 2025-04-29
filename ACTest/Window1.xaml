@@ -10,7 +10,6 @@
     <Window.Resources>
         <!-- 将Color转换为SolidColorBrush -->
         <local:ColorToBrushConverter x:Key="ColorToBrushConverter"/>
-
         <!-- 将bool转换为FontWeight -->
         <local:BoolToFontWeightConverter x:Key="BoolToBoldConverter"/>
     </Window.Resources>
@@ -32,25 +31,23 @@
             <!--<ComboBox Margin="5" ItemsSource="{Binding LayerNamesWithCurrent}"
                       SelectedItem="{Binding SelectedLayer, Mode=TwoWay}"
                       />-->
-            <ComboBox Margin="5" 
-          ItemsSource="{Binding LayerNamesWithCurrent}"
+            <ComboBox Margin="5" ItemsSource="{Binding LayerNamesWithCurrent}"
           SelectedItem="{Binding SelectedLayer, Mode=TwoWay}">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <!-- 颜色预览方块 -->
+                        <StackPanel Orientation="Horizontal"> 
                             <Border Width="16" Height="16" Margin="0,0,5,0"
                         Background="{Binding Color, Converter={StaticResource ColorToBrushConverter}}"
                         BorderBrush="DarkGray" BorderThickness="1"/>
-                            <!-- 图层名称 -->
-                            <TextBlock Text="{Binding Name}" 
+                             <TextBlock Text="{Binding Name}" 
                            FontWeight="{Binding IsCurrentLayer, Converter={StaticResource BoolToBoldConverter}}"/>
-                        </StackPanel>
+                        </StackPanel> 
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
             </ComboBox>
+
         </StackPanel>
-        <Button Content="OK" Grid.Row="1" Command="{Binding GetSelectionCommand}"
+        <Button Content="OK" Grid.Row="1" Command="{Binding GetWordCommand}"
                 Margin="5" Click="Button_Click" />
     </Grid>
 </Window>

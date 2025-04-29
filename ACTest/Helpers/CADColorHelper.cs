@@ -1,95 +1,20 @@
-﻿using Autodesk.AutoCAD.ApplicationServices;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Application = Autodesk.AutoCAD.ApplicationServices.Application;
-using AcadApp = Autodesk.AutoCAD.Windows;
-using Autodesk.AutoCAD.Runtime;
-using ACTest;
-using Autodesk.AutoCAD.EditorInput;
-using Autodesk.AutoCAD.DatabaseServices;
-using System.IO;
-using System.Windows.Controls;
-using System.Windows;
-using Autodesk.AutoCAD.GraphicsInterface;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
-using System.Windows.Documents;
 using System.Windows.Media;
-using Autodesk.AutoCAD.Geometry;
 
-[assembly: CommandClass(typeof(ShowAllFonts))]
-namespace ACTest
+namespace ACTest.Helpers
 {
-    public class ShowAllFonts
+    public static class CADColorHelper
     {
-        [CommandMethod("ShowAllFonts", CommandFlags.UsePickSet)]
-        public void ShowAllFontsMethod()
-        {
-            Document Env = Application.DocumentManager.MdiActiveDocument;
-            Database db = Env.Database;
-
-            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-
-            //0429 基本完成csv画表格
-            //TableTemplateViewHorizon tableTemplateViewHorizon = new TableTemplateViewHorizon(Env);
-            //tableTemplateViewHorizon.ShowDialog();
-            //查找是否在模型空间
-            //if (IsInModelSpace())
-            //{
-            //    ed.WriteMessage("\n当前在模型空间操作");
-            //}
-            //else
-            //{
-            //    ed.WriteMessage("\n当前在图纸空间(布局)操作");
-            //}
-            //向TextStyleTable 添加字体样式名称.OK
-            //string textFontStyle = "黑体"; 
-            //string textFontStyle = "仿宋"; 
-            //string textFontStyle = "宋体";
-            //AddTextStyle(db, textFontStyle);
-            //查找所有图层，加入combobox.OK
-            //Window1 window1 = new Window1(Env);
-            //window1.ShowDialog();
-            //查找当前图层并输出
-            //using (Transaction tr = db.TransactionManager.StartTransaction())
-            //{
-            //    ObjectId currentLayerId = db.Clayer;
-            //    // 获取图层表记录
-            //    LayerTableRecord layer = tr.GetObject(currentLayerId, OpenMode.ForRead) as LayerTableRecord;
-            //    string layerName = layer.Name;
-            //    tr.Commit();
-            //    Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-            //    ed.WriteMessage(layerName);
-            //}
-            //图层颜色转换
-            //using (Transaction tr = db.TransactionManager.StartTransaction())
-            //{
-            //    ObjectId currentLayerId = db.Clayer;
-            //    // 获取图层表记录
-            //    LayerTableRecord layer = tr.GetObject(currentLayerId, OpenMode.ForRead) as LayerTableRecord;
-            //    Color color = GetWpfColor(layer.Color);
-            //    tr.Commit();
-            //    Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-            //    ed.WriteMessage(color.R.ToString() + "\n" + color.G.ToString() + "\n" + color.B.ToString());
-            //}
-        }
-
-        public bool IsInModelSpace()
-        {
-            Document doc = Application.DocumentManager.MdiActiveDocument;
-            Database db = doc.Database;
-            // 三种条件同时满足才确定是模型空间
-            return (db.TileMode &&
-                    db.CurrentSpaceId == SymbolUtilityServices.GetBlockModelSpaceId(db));
-        }
-        public Color GetWpfColor(Autodesk.AutoCAD.Colors.Color acColor)
+        // 将 AutoCAD 颜色索引转换为 WPF Color
+        public static Color GetWpfColor(Autodesk.AutoCAD.Colors.Color acColor)
         {
             if (acColor.ColorMethod == Autodesk.AutoCAD.Colors.ColorMethod.ByAci)
             {
-                return GetRGBFromACI((short)acColor.ColorIndex);
+                return GetRGBFromACI(acColor.ColorIndex);
             }
             else if (acColor.ColorMethod == Autodesk.AutoCAD.Colors.ColorMethod.ByColor)
             {
@@ -98,9 +23,9 @@ namespace ACTest
             }
             return Colors.White; // 默认颜色
         }
-        public Color GetRGBFromACI(short colorIndex)
+        public static Color GetRGBFromACI(short colorIndex)
         {
-            Color color = new Color();
+            Color color = Colors.Transparent;
             var lookup = ACItoRGBLookup();
             //lookup.TryGetValue(colorIndex, out List<short> rgbValues);
             if (lookup.TryGetValue(colorIndex, out List<short> rgbValues))
@@ -108,11 +33,12 @@ namespace ACTest
                 color.R = (byte)rgbValues[0];
                 color.G = (byte)rgbValues[1];
                 color.B = (byte)rgbValues[2];
+                color.A = 255;
             }
             // 如果找不到，返回默认黑色
             return color;
         }
-        public short GetACIfromRGB(short r, short g, short b)
+        public static short GetACIfromRGB(short r, short g, short b)
         {
             Dictionary<short, List<short>> lookup = ACItoRGBLookup();
             //now get color using shortest dist calc and see if it matches
@@ -133,7 +59,7 @@ namespace ACTest
             }
             return match;
         }
-        public Dictionary<short, List<short>> ACItoRGBLookup()
+        public static Dictionary<short, List<short>> ACItoRGBLookup()
         {
             Dictionary<short, List<short>> ret = new Dictionary<short, List<short>>();
             ret.Add(1, new List<short>() { 255, 0, 0 });
@@ -393,44 +319,5 @@ namespace ACTest
             ret.Add(255, new List<short>() { 255, 255, 255 });
             return ret;
         }
-        private void AddTextStyle(Database db, string textStyleName)
-        {
-            using (Transaction trans = db.TransactionManager.StartTransaction())
-            {
-                TextStyleTable tst = trans.GetObject(db.TextStyleTableId, OpenMode.ForRead) as TextStyleTable;
-                if (!tst.Has(textStyleName))
-                {
-                    TextStyleTableRecord tstr = new TextStyleTableRecord();
-                    tstr.Name = textStyleName;
-                    tstr.Font = new FontDescriptor(textStyleName, false, false, 0, 0);
-                    tstr.XScale = 0.7;
-                    tst.UpgradeOpen();
-                    tst.Add(tstr);
-                    trans.AddNewlyCreatedDBObject(tstr, true);
-                    tst.DowngradeOpen();
-                }
-                else
-                {
-                    // 修改已有文本样式
-                    ObjectId styleId = tst[textStyleName];
-                    TextStyleTableRecord existingStyle = trans.GetObject(styleId, OpenMode.ForWrite) as TextStyleTableRecord;
-                    // 更新样式属性
-                    existingStyle.XScale = 0.7;  // 修改宽度因子
-                    existingStyle.Font = new FontDescriptor(textStyleName, false, false, 0, 0);
-                    existingStyle.TextSize = 0;
-                    existingStyle.IsVertical = false;
-                    existingStyle.ObliquingAngle = 0;
-                }
-                trans.Commit();
-            }
-            Application.DocumentManager.MdiActiveDocument.Editor.Regen();
-        }
-
-
-
-
-
-
-
     }
 }

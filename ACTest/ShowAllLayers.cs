@@ -17,8 +17,10 @@ namespace ACTest
         [CommandMethod("ShowAllLayers", CommandFlags.UsePickSet)]
         public void ShowAllLayersMethod()
         {
-            Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
-            ed.WriteMessage("New20250420,222");
+            //Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+            //ed.WriteMessage("New20250420,222");
+            LayerManagerView layerManager =new LayerManagerView();
+            layerManager.ShowDialog();
         }
     }
 }
